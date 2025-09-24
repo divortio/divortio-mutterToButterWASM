@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FFmpeg.wasm Multi-threading MRE (Multi-File)</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            padding: 2rem;
+        }
+
+        #log {
+            white-space: pre-wrap;
+            background-color: #1e1e1e;
+            border: 1px solid #333;
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: monospace;
+        }
+
+        .success {
+            color: #28a745;
+        }
+
+        .error {
+            color: #d9534f;
+        }
+
+        .info {
+            color: #a8c7fa;
+        }
+    </style>
+</head>
+<body>
+<h1>FFmpeg.wasm Multi-threading MRE (Multi-File)</h1>
+<p>This version uses a separate JS file to perfectly replicate the application's loading environment. This will provide
+    a definitive test of the multi-threaded core's stability.</p>
+<pre id="log">Initializing...</pre>
+
+<script type="module" src="./mre-runner.js"></script>
+</body>
+</html>

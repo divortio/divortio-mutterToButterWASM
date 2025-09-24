@@ -16,14 +16,15 @@ import {runFFmpeg} from '../ffmpeg-run.js';
 export async function analyze(ffmpeg, inputFile, updateUI, logStore) {
     logStore.clear();
 
-    // This is the stable method. Creating a small temporary output file forces
-    // FFmpeg to process the input and print its full metadata to the log.
     const tempOutputFile = 'temp_for_analysis.wav';
-    const args = ['-hide_banner', '-i', inputFile, '-t', '1', '-f', 'wav', tempOutputFile]
 
-    await runFFmpeg(ffmpeg, args , updateUI, logStore);
+    // --- THIS IS THE FIX ---
+    // Added "-map 0:a:0" to ensure only the audio stream is processed.
+    const args = ['-hide_banner', '-i', inputFile, '-map', '0:a:0', '-t', '1', '-f', 'wav', tempOutputFile]
+    // -----------------------
 
-    // The temp file is no longer needed, so we clean it up immediately.
+    await runFFmpeg(ffmpeg, args, updateUI, logStore);
+
     await ffmpeg.deleteFile(tempOutputFile);
 
     const durationMatch = logStore.get().match(/Duration: (\d{2}):(\d{2}):(\d{2})\.(\d{2})/);

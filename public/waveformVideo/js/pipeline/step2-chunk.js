@@ -15,7 +15,19 @@ import {CHUNK_DURATION} from '../constants.js';
  * @throws {Error} If chunking fails or produces no files.
  */
 export async function chunk(ffmpeg, inputFile, updateUI, logStore) {
-    await runFFmpeg(ffmpeg,['-i', inputFile, '-f', 'segment', '-segment_time', String(CHUNK_DURATION), '-c:a', 'pcm_s16le', 'chunk_%04d.wav'], updateUI, logStore);
+
+    // --- THIS IS THE FIX ---
+    // Added "-map 0:a:0" to ensure only the audio stream is chunked.
+    const chunkingArgs = [
+        '-i', inputFile,
+        '-map', '0:a:0',
+        '-f', 'segment',
+        '-segment_time', String(CHUNK_DURATION),
+        '-c:a', 'pcm_s16le',
+        'chunk_%04d.wav'
+    ];
+    await runFFmpeg(ffmpeg, chunkingArgs, updateUI, logStore);
+    // -----------------------
 
     const dirList = await ffmpeg.listDir('.');
     const chunkFiles = dirList

@@ -1,5 +1,5 @@
 // --- FFmpeg CDN Configuration ---
-export const CORE_VERSION = "0.12.6";
+export const CORE_VERSION = "0.12.10"; // <-- THE DEFINITIVE FIX for the deadlock
 export const FFMPEG_VERSION = "0.12.10";
 export const baseURLFFMPEG = `https://unpkg.com/@ffmpeg/ffmpeg@${FFMPEG_VERSION}/dist/umd`;
 export const baseURLCore = `https://unpkg.com/@ffmpeg/core@${CORE_VERSION}/dist/umd`;

@@ -13,25 +13,25 @@
  * @throws {Error} Throws a detailed error if the command fails.
  */
 export async function runFFmpeg(ffmpeg, args, updateUI, logStore) {
-    const strArgs = args.join(' ')
-    console.log(strArgs)
-    const commandString = `ffmpeg ${strArgs}`;
+    const commandString = `ffmpeg ${args.join(' ')}`;
     if (updateUI) {
         updateUI({command: commandString});
     }
     console.log("Executing FFmpeg command:", commandString);
 
     try {
-        // FIX: The ffmpeg.exec function requires arguments to be spread, not passed as an array.
-        const result = await ffmpeg.exec(args);
+        let result;
+
+
+        result = await ffmpeg.exec(args);
+
+        // ------------------------
+
         if (result !== 0) {
-            // This catches errors reported by FFmpeg's return code and includes the logs
             throw new Error(`FFmpeg exited with a non-zero status code: ${result}.\n\nFull Log:\n${logStore.get()}`);
         }
     } catch (error) {
-        // This catches crashes or exceptions within the WASM module itself
         const detailedError = `FFmpeg command failed: ${error.message}\n\nFailed Command:\n${commandString}\n\nFull Log:\n${logStore.get()}`;
-        // Re-throw a more informative error
         throw new Error(detailedError);
     }
 }

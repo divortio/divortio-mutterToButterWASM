@@ -3,6 +3,7 @@
  * It imports and executes each step in sequence.
  */
 
+import {sanitize} from './pipeline/step0-sanitize.js';
 import {analyze} from './pipeline/step1-analyze.js';
 import {chunk} from './pipeline/step2-chunk.js';
 import {processChunks} from './pipeline/step3-process-chunks.js';
@@ -14,6 +15,7 @@ export async function generateWaveformVideo(ffmpeg, file, updateUI, onProgress) 
     let audioDuration = 0;
     const allPeakLevels = [];
     const cleanupPaths = [file.name];
+    const TOTAL_STEPS = 6; // Updated total steps
 
     const logStore = {
         logs: '',
@@ -31,7 +33,6 @@ export async function generateWaveformVideo(ffmpeg, file, updateUI, onProgress) 
 
     const cleanup = async () => {
         if (!ffmpeg) return;
-        // Unmount first to release the file handle
         try {
             await ffmpeg.unmount('/input');
         } catch (e) {
@@ -50,31 +51,43 @@ export async function generateWaveformVideo(ffmpeg, file, updateUI, onProgress) 
     };
 
     try {
-        // The original working method: Mount the user's file directly.
         await ffmpeg.createDir('/input');
         await ffmpeg.mount('WORKERFS', {files: [file]}, '/input');
 
         ffmpeg.on('log', ({message}) => logStore.append(message));
 
-        // --- Step 1: Analyze ---
+        const originalInputFile = `/input/${file.name}`;
+
+        // --- Step 0: Sanitize ---
         let stepStartTime = performance.now();
-        updateUI({progressMessage: 'Step 1: Analyzing Audio', progressStep: {current: 0, total: 5}});
-        audioDuration = await analyze(ffmpeg, `/input/${file.name}`, updateUI, logStore);
+        updateUI({progressMessage: 'Step 1: Sanitizing Audio', progressStep: {current: 0, total: TOTAL_STEPS}});
+        const sanitizedAudioFile = await sanitize(ffmpeg, originalInputFile, updateUI, logStore);
+        cleanupPaths.push(sanitizedAudioFile);
+        updateUI({
+            progressMessage: 'Step 1: Sanitization Complete',
+            progressStep: {current: 1, total: TOTAL_STEPS},
+            stepTime: performance.now() - stepStartTime
+        });
+
+        // --- Step 1: Analyze ---
+        stepStartTime = performance.now();
+        updateUI({progressMessage: 'Step 2: Analyzing Audio', progressStep: {current: 1, total: TOTAL_STEPS}});
+        audioDuration = await analyze(ffmpeg, sanitizedAudioFile, updateUI, logStore);
         updateUI({type: 'duration', duration: audioDuration});
         updateUI({
-            progressMessage: 'Step 1: Analysis Complete',
-            progressStep: {current: 1, total: 5},
+            progressMessage: 'Step 2: Analysis Complete',
+            progressStep: {current: 2, total: TOTAL_STEPS},
             stepTime: performance.now() - stepStartTime
         });
 
         // --- Step 2: Chunk ---
         stepStartTime = performance.now();
-        updateUI({progressMessage: 'Step 2: Chunking Audio', progressStep: {current: 1, total: 5}});
-        const chunkFiles = await chunk(ffmpeg, `/input/${file.name}`, updateUI, logStore);
+        updateUI({progressMessage: 'Step 3: Chunking Audio', progressStep: {current: 2, total: TOTAL_STEPS}});
+        const chunkFiles = await chunk(ffmpeg, sanitizedAudioFile, updateUI, logStore);
         cleanupPaths.push(...chunkFiles);
         updateUI({
-            progressMessage: 'Step 2: Chunking Complete',
-            progressStep: {current: 2, total: 5},
+            progressMessage: 'Step 3: Chunking Complete',
+            progressStep: {current: 3, total: TOTAL_STEPS},
             stepTime: performance.now() - stepStartTime
         });
 
@@ -87,30 +100,30 @@ export async function generateWaveformVideo(ffmpeg, file, updateUI, onProgress) 
         allPeakLevels.push(...peaks);
         cleanupPaths.push(...segmentFiles);
         updateUI({
-            progressMessage: 'Step 3: Processing Complete',
-            progressStep: {current: 3, total: 5},
+            progressMessage: 'Step 4: Processing Complete',
+            progressStep: {current: 4, total: TOTAL_STEPS},
             stepTime: performance.now() - stepStartTime
         });
 
         // --- Step 4: Concatenate ---
         stepStartTime = performance.now();
-        updateUI({progressMessage: 'Step 4: Concatenating', progressStep: {current: 3, total: 5}});
+        updateUI({progressMessage: 'Step 5: Concatenating', progressStep: {current: 4, total: TOTAL_STEPS}});
         const silentVideoFile = await concatenate(ffmpeg, segmentFiles, updateUI, logStore);
         cleanupPaths.push(silentVideoFile, 'concat_list.txt');
         updateUI({
-            progressMessage: 'Step 4: Concatenation Complete',
-            progressStep: {current: 4, total: 5},
+            progressMessage: 'Step 5: Concatenation Complete',
+            progressStep: {current: 5, total: TOTAL_STEPS},
             stepTime: performance.now() - stepStartTime
         });
 
         // --- Step 5: Mux Audio ---
         stepStartTime = performance.now();
-        updateUI({progressMessage: 'Step 5: Muxing Audio', progressStep: {current: 4, total: 5}});
-        const finalVideoFile = await mux(ffmpeg, silentVideoFile, `/input/${file.name}`, updateUI, logStore);
+        updateUI({progressMessage: 'Step 6: Muxing Audio', progressStep: {current: 5, total: TOTAL_STEPS}});
+        const finalVideoFile = await mux(ffmpeg, silentVideoFile, sanitizedAudioFile, updateUI, logStore);
         cleanupPaths.push(finalVideoFile);
         updateUI({
-            progressMessage: 'Step 5: Muxing Complete',
-            progressStep: {current: 5, total: 5},
+            progressMessage: 'Step 6: Muxing Complete',
+            progressStep: {current: 6, total: TOTAL_STEPS},
             stepTime: performance.now() - stepStartTime
         });
 

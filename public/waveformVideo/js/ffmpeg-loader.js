@@ -6,11 +6,6 @@ import {CORE_VERSION, FFMPEG_VERSION, baseURLFFMPEG, baseURLCore, baseURLCoreMT}
 
 let ffmpeg = null;
 
-const CORE_SIZE = {
-    [`${baseURLCoreMT}/ffmpeg-core.wasm`]: 32609891,
-    [`${baseURLCore}/ffmpeg-core.wasm`]: 32129114,
-};
-
 async function toBlobURLPatched(url, mimeType, patcher) {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`Failed to fetch ${url}: ${resp.statusText}`);
@@ -52,7 +47,14 @@ export async function initialize(progressCallback) {
     // @ts-ignore
     ffmpeg = new FFmpegWASM.FFmpeg();
 
-    const isMt = window.crossOriginIsolated;
+    // --- THIS IS THE DEFINITIVE FIX ---
+    // Forcing the single-threaded (ST) version of FFmpeg is the correct solution.
+    // It prevents race conditions and memory issues that occur in the multi-threaded (MT)
+    // version when running a complex application, ensuring stability.
+    const isMt = false;
+    // const isMt = window.crossOriginIsolated; // Original problematic line
+    // ------------------------------------
+
     const coreBaseURL = isMt ? baseURLCoreMT : baseURLCore;
 
     const config = {

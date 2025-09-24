@@ -18,6 +18,12 @@ class App {
             const onLoadingProgress = (ratio) => this.ui.updateLoadingProgress(ratio);
             this.ffmpeg = await initializeFFmpeg(onLoadingProgress);
 
+            // --- THIS IS THE FIX for the UI bug ---
+            // The code to display the version was missing. This adds it back.
+            const versionInfo = `<strong>Version:</strong> ${this.ffmpeg.version}<br><strong>Mode:</strong> ${window.crossOriginIsolated ? 'Multi-Threaded' : 'Single-Threaded'}`;
+            this.ui.update({version: versionInfo});
+            // ------------------------------------------
+
             this.isReady = true;
             this.ui.initializeEventListeners((file) => this.handleFileSelection(file));
             this.ui.displayInitialState();

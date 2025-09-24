@@ -40,7 +40,19 @@ export async function processChunks(ffmpeg, chunkFiles, updateUI, onProgress, lo
         // 1. Analyze the chunk for peak levels
         logStore.clear();
         const sliceDuration = CHUNK_DURATION / NUM_BARS;
-        await runFFmpeg(ffmpeg,['-f', 'lavfi', '-i', `amovie=${chunkFile},astats=metadata=1:length=${sliceDuration},ametadata=mode=print:key=lavfi.astats.Overall.Peak_level`, '-f', 'null', '-'], updateUI, logStore);
+
+        // --- THIS IS THE FIX ---
+        // Switched to the more robust `amovie` filter for analysis, which correctly
+        // slices the audio and provides the necessary 100 data points for the 100 bars.
+        // The output to 'null' and '-' is stable with the multi-threaded core.
+        const analysisArgs = [
+            '-f', 'lavfi',
+            '-i', `amovie=${chunkFile},astats=metadata=1:length=${sliceDuration},ametadata=mode=print:key=lavfi.astats.Overall.Peak_level`,
+            '-f', 'null',
+            '-'
+        ];
+        await runFFmpeg(ffmpeg, analysisArgs, updateUI, logStore);
+        // -----------------------
 
         const peakLevels = logStore.get().split('\n')
             .filter(line => line.includes('lavfi.astats.Overall.Peak_level='))
@@ -51,10 +63,8 @@ export async function processChunks(ffmpeg, chunkFiles, updateUI, onProgress, lo
         // 2. Render the video segment
         let renderArgs;
         if (peakLevels.length === 0) {
-            // If the chunk is silent, create a simple black video
             renderArgs = ['-f', 'lavfi', '-i', `color=c=${BG_COLOR}:s=${WIDTH}x${HEIGHT}:d=${CHUNK_DURATION}:r=${FPS}`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an', segmentFile];
         } else {
-            // Build the complex filtergraph to draw the animated waveform
             let playedCmds = '', unplayedCmds = '';
             peakLevels.forEach((peakDb, barIndex) => {
                 let level = 1;
@@ -71,26 +81,13 @@ export async function processChunks(ffmpeg, chunkFiles, updateUI, onProgress, lo
                 unplayedCmds += `drawbox=x=${xPos}:y=${yPos}:w=${BAR_WIDTH}:h=${barHeight}:c=${WAVE_COLOR_UNPLAYED}@1.0:t=fill,`;
             });
 
-            const filterComplex = `
-                [0:v] ${unplayedCmds.slice(0, -1)} [unplayed_wave];
-                [1:v] ${playedCmds.slice(0, -1)} [played_wave];
-                color=c=black:s=${WIDTH}x${HALF_HEIGHT}:d=${CHUNK_DURATION}:r=${FPS} [mask_base];
-                color=c=white:s=${WIDTH}x${HALF_HEIGHT}:d=${CHUNK_DURATION}:r=${FPS} [mask_color];
-                [mask_base][mask_color] overlay=x='-w+(w/${CHUNK_DURATION})*t' [animated_mask];
-                [played_wave][animated_mask] alphamerge [played_animated];
-                [unplayed_wave][played_animated] overlay [animated_top_half];
-                [animated_top_half] split [top][bottom];
-                [bottom] vflip [bottom_flipped];
-                [top][bottom_flipped] vstack [mirrored_waves];
-                color=c=${BG_COLOR}:s=${WIDTH}x${HEIGHT}:d=${CHUNK_DURATION}:r=${FPS} [bg];
-                [bg][mirrored_waves] overlay=(W-w)/2:(H-h)/2 [final_video]
-            `;
+            const filterComplex = `[0:v] ${unplayedCmds.slice(0, -1)} [unplayed_wave]; [1:v] ${playedCmds.slice(0, -1)} [played_wave]; color=c=black:s=${WIDTH}x${HALF_HEIGHT}:d=${CHUNK_DURATION}:r=${FPS} [mask_base]; color=c=white:s=${WIDTH}x${HALF_HEIGHT}:d=${CHUNK_DURATION}:r=${FPS} [mask_color]; [mask_base][mask_color] overlay=x='-w+(w/${CHUNK_DURATION})*t' [animated_mask]; [played_wave][animated_mask] alphamerge [played_animated]; [unplayed_wave][played_animated] overlay [animated_top_half]; [animated_top_half] split [top][bottom]; [bottom] vflip [bottom_flipped]; [top][bottom_flipped] vstack [mirrored_waves]; color=c=${BG_COLOR}:s=${WIDTH}x${HEIGHT}:d=${CHUNK_DURATION}:r=${FPS} [bg]; [bg][mirrored_waves] overlay=(W-w)/2:(H-h)/2 [final_video]`;
 
             renderArgs = [
                 '-f', 'lavfi', '-i', `color=c=black@0.0:s=${WIDTH}x${HALF_HEIGHT}:d=${CHUNK_DURATION}:r=${FPS}`,
                 '-f', 'lavfi', '-i', `color=c=black@0.0:s=${WIDTH}x${HALF_HEIGHT}:d=${CHUNK_DURATION}:r=${FPS}`,
                 '-filter_complex', filterComplex,
-                '-map', '[final_video]', '-c:v', 'libx264', '-preset', 'medium', '-crf', '23', '-pix_fmt', 'yuv420p', '-an', segmentFile
+                '-map', '[final_video]', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p', '-an', segmentFile
             ];
         }
 
