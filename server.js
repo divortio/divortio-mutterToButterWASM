@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = 8080;
-const PUBLIC_DIR = path.join(__dirname, 'public', 'waveform');
+const PUBLIC_DIR = path.join(__dirname, 'public', 'waveformVideo');
 
 const mimeTypes = {
     '.html': 'text/html',
