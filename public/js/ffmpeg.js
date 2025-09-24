@@ -1,5 +1,5 @@
 var ffmpeg = null;
-var tryMultiThread = false; // currently use false since it's not stable
+var tryMultiThread = true; // currently use false since it's not stable
 
 const CORE_VERSION = "0.12.6"
 const FFMPEG_VERSION = "0.12.10"
