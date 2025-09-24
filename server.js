@@ -17,7 +17,7 @@ const mimeTypes = {
 };
 
 http.createServer((req, res) => {
-    let filePath = path.join(PUBLIC_DIR, req.url === '/' ? 'waveform.html' : req.url);
+    let filePath = path.join(PUBLIC_DIR, req.url === '/' ? 'index.html' : req.url);
 
     fs.readFile(filePath, (err, content) => {
         if (err) {
