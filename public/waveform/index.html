@@ -4,92 +4,92 @@
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>MutterToButterWASM - Waveform Generator</title>
-    <link rel="stylesheet" type="text/css" href="css/waveform.css">
+    <link rel="stylesheet" type="text/css" href="css/style.css">
 </head>
 <body>
 <div class="container">
     <div class="card">
         <div class="header"><h1>Waveform Generator</h1></div>
-        <label id="upload-area" for="file-input"><p>Click to upload an audio file</p></label>
-        <input id="file-input" type="file" accept="audio/*,.json" style="display: none;"/>
-        <div id="input-stats-section" class="card" style="display: none;">
+        <label id="uploadArea" for="fileInput"><p id="uploadAreaText">Click to upload an audio file</p></label>
+        <input id="fileInput" type="file" accept="audio/*,.json" style="display: none;"/>
+        <div id="inputStatsSection" class="card" style="display: none;">
             <div class="section-header">Input</div>
-            <div id="input-stats"></div>
-            <audio id="audio-player" controls style="width: 100%; margin-top: 1rem;"></audio>
+            <div id="inputStats"></div>
+            <audio id="audioPlayer" controls style="width: 100%; margin-top: 1rem;"></audio>
         </div>
-        <div id="execution-section" class="card" style="display: none;">
+        <div id="executionSection" class="card" style="display: none;">
             <div class="section-header">Execution</div>
             <div id="execution-status">
-                <div id="execution-indicator"></div>
-                <span id="progress-text">Initializing...</span>
+                <div id="executionIndicator"></div>
+                <span id="progressText">Initializing...</span>
             </div>
-            <div id="progress-bar">
-                <div id="progress-bar-inner"></div>
+            <div id="progressBar">
+                <div id="progressBarInner"></div>
             </div>
             <div class="execution-metrics">
-                <span id="final-execution-stats"></span>
-                <span id="execution-timer">00:00</span>
+                <span id="finalExecutionStats"></span>
+                <span id="executionTimer">00:00</span>
             </div>
         </div>
-        <div id="output-section" class="card" style="display: none;">
+        <div id="outputSection" class="card" style="display: none;">
             <div class="section-header">Output</div>
             <div class="output-header">
-                <div id="output-info" class="output-info"></div>
-                <svg id="download-icon" class="download-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                <div id="outputInfo" class="output-info"></div>
+                <svg id="downloadIcon" class="download-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
                      fill="currentColor">
                     <path d="M12 15.586l-4.293-4.293-1.414 1.414L12 18.414l5.707-5.707-1.414-1.414L12 15.586zM12 4a1 1 0 00-1 1v9.586l-2.293-2.293-1.414 1.414L12 18.414l4.707-4.707-1.414-1.414L13 14.586V5a1 1 0 00-1-1z"/>
                 </svg>
             </div>
-            <div id="waveform-container"><img id="waveform-image" src="" alt="Generated Waveform"/></div>
+            <div id="waveform-container"><img id="waveformImage" src="" alt="Generated Waveform"/></div>
             <div id="download-button-container">
-                <button id="download-button">Download PNG</button>
+                <button id="downloadButton">Download PNG</button>
             </div>
         </div>
-        <div id="measurements-section" class="card" style="display: none;">
+        <div id="measurementsSection" class="card" style="display: none;">
             <div class="section-header">Measurements</div>
             <div class="output-header">
-                <div id="measurements-info" class="output-info"></div>
-                <svg id="download-measurements-icon" class="download-icon" xmlns="http://www.w3.org/2000/svg"
+                <div id="measurementsInfo" class="output-info"></div>
+                <svg id="downloadMeasurementsIcon" class="download-icon" xmlns="http://www.w3.org/2000/svg"
                      viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 15.586l-4.293-4.293-1.414 1.414L12 18.414l5.707-5.707-1.414-1.414L12 15.586zM12 4a1 1 0 00-1 1v9.586l-2.293-2.293-1.414 1.414L12 18.414l4.707-4.707-1.414-1.414L13 14.586V5a1 1 0 00-1-1z"/>
                 </svg>
             </div>
             <div class="code-block-container">
-                <div id="measurements-data" class="code-block"></div>
+                <div id="measurementsData" class="code-block"></div>
             </div>
             <div id="download-measurements-button-container" class="download-button-container">
-                <button id="download-measurements-button">Download Measurements</button>
+                <button id="downloadMeasurementsButton">Download Measurements</button>
             </div>
         </div>
     </div>
     <div class="card">
-        <div id="console-header" class="console-header collapsed">
+        <div id="consoleHeader" class="console-header collapsed">
             <span>Console</span>
             <span class="console-arrow">►</span>
         </div>
-        <div id="diagnostics-section" style="display: none;">
+        <div id="diagnosticsSection" style="display: none;">
             <div class="code-block-container">
                 <h3>FFmpeg Version</h3>
-                <div id="ffmpeg-version-indicator" class="code-block">Loading...</div>
+                <div id="ffmpegVersionIndicator" class="code-block">Loading...</div>
             </div>
             <div class="code-block-container">
                 <h3>Multi-threading Diagnostics</h3>
-                <div id="mt-diagnostics" class="code-block"></div>
+                <div id="mtDiagnostics" class="code-block"></div>
             </div>
             <div class="code-block-container">
                 <h3>FFmpeg Command</h3>
-                <button id="copy-command" class="copy-button">Copy</button>
-                <div id="ffmpeg-command" class="code-block"></div>
+                <button id="copyCommandBtn" class="copy-button">Copy</button>
+                <div id="ffmpegCommand" class="code-block"></div>
             </div>
-            <div id="error-container" class="code-block-container" style="display: none;">
+            <div id="errorContainer" class="code-block-container" style="display: none;">
                 <h3>Error Details</h3>
-                <button id="copy-error" class="copy-button">Copy</button>
-                <div id="error-block" class="code-block"></div>
+                <button id="copyErrorBtn" class="copy-button">Copy</button>
+                <div id="errorBlock" class="code-block"></div>
             </div>
             <div class="code-block-container">
                 <h3>FFmpeg Logs</h3>
-                <button id="copy-logs" class="copy-button">Copy</button>
-                <div id="ffmpeg-logs" class="code-block"></div>
+                <button id="copyLogsBtn" class="copy-button">Copy</button>
+                <div id="ffmpegLogs" class="code-block"></div>
             </div>
         </div>
     </div>

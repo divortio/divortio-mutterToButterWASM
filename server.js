@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = 8080;
-const PUBLIC_DIR = path.join(__dirname, 'public');
+const PUBLIC_DIR = path.join(__dirname, 'public', 'waveform');
 
 const mimeTypes = {
     '.html': 'text/html',
@@ -42,5 +42,5 @@ http.createServer((req, res) => {
 }).listen(PORT, () => {
     console.log(`Server running at http://127.0.0.1:${PORT}/`);
     console.log("✅ COOP and COEP headers are being set automatically.");
-    console.log("Please open http://127.0.0.1:8080/waveform.html");
+    console.log("Please open http://127.0.0.1:8080/index.html");
 });

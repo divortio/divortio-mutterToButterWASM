@@ -2,30 +2,21 @@
  * @file This module handles the diagnostics for multi-threading support.
  */
 
-/**
- * A collection of DOM elements used by the diagnostics module.
- * @private
- * @type {{mtDiagnostics: HTMLElement|null}}
- */
-const dom = {};
+let mtDiagnosticsElement = null;
 
-/**
- * Initializes the diagnostics module by finding its required DOM elements.
- * This must be called after the DOM has loaded.
- */
-export function initDiagnostics() {
-    dom.mtDiagnostics = document.getElementById('mt-diagnostics');
+function init() {
+    if (!mtDiagnosticsElement) {
+        mtDiagnosticsElement = document.getElementById('mtDiagnostics');
+    }
 }
 
-/**
- * Runs and displays diagnostics for multi-threading support.
- */
 export async function runDiagnostics() {
-    if (!dom.mtDiagnostics) {
-        console.error("Diagnostics UI not initialized. Call initDiagnostics() first.");
+    init();
+    if (!mtDiagnosticsElement) {
+        console.error("Diagnostics UI element #mtDiagnostics not found.");
         return;
     }
-    console.log("Diagnostics: Running diagnostics.");
+
     const secure = window.isSecureContext ? '✅ Secure Context (localhost/https)' : '❌ Not a Secure Context';
     let coop = '...';
     let coep = '...';
@@ -37,9 +28,8 @@ export async function runDiagnostics() {
     } catch (e) {
         coop = '❌ Could not check headers';
         coep = '❌ Could not check headers';
-        console.error("Diagnostics: Network error checking headers.", e);
     }
 
     const isolated = window.crossOriginIsolated ? '✅ Browser is Cross-Origin Isolated' : '❌ Browser is NOT Cross-Origin Isolated';
-    dom.mtDiagnostics.innerHTML = `${secure}<br>${coop}<br>${coep}<br>${isolated}`;
+    mtDiagnosticsElement.innerHTML = `${secure}<br>${coop}<br>${coep}<br>${isolated}`;
 }
