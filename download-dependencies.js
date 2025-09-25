@@ -9,7 +9,7 @@ import {pipeline} from 'stream/promises';
 const FFMPEG_VERSION = "0.12.10";
 const CORE_VERSION = "0.12.10";
 
-const VENDOR_DIR = path.join('public', 'mutterToButter', 'vendor');
+const VENDOR_DIR = path.join('public', 'purgoVox', 'vendor');
 
 const filesToDownload = [
     // Main FFmpeg library files

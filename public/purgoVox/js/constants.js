@@ -31,7 +31,7 @@ export const baseURLCoreMT = VENDOR_PATH;
 // --- Pipeline Configuration ---
 /**
  * @constant {number} The duration of each audio chunk in seconds.
- * Corresponds to '-segment_time 300' in mutterToButter.sh.
+ * Corresponds to '-segment_time 300' in purgoVox.sh.
  */
 export const CHUNK_DURATION = 300;
 /**
