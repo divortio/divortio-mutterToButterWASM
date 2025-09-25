@@ -3,19 +3,42 @@
 <head>
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>MutterToButterWASM - Waveform Video Generator</title>
+    <title>MutterToButterWASM - Audio Mastering</title>
     <link rel="stylesheet" type="text/css" href="css/style.css">
 </head>
 <body>
 <div class="container">
     <div class="card">
-        <div class="header"><h1>Waveform Video Generator</h1></div>
+        <div class="header"><h1>MutterToButter Audio Mastering</h1></div>
         <label id="uploadArea" for="fileInput"><p id="uploadAreaText">Click to upload an audio file</p></label>
         <input id="fileInput" type="file" accept="audio/*" style="display: none;"/>
+
+        <div id="masteringOptionsSection" class="card" style="display: none;">
+            <div class="section-header">Mastering Options</div>
+            <div class="options-grid">
+                <div class="option">
+                    <input type="checkbox" id="gateToggle" name="gate" checked>
+                    <label for="gateToggle">Dynamic Noise Gate</label>
+                </div>
+                <div class="option">
+                    <input type="checkbox" id="clarityToggle" name="clarity" checked>
+                    <label for="clarityToggle">Clarity Boost</label>
+                </div>
+                <div class="option">
+                    <input type="checkbox" id="tonalToggle" name="tonal" checked>
+                    <label for="tonalToggle">Tonal EQ</label>
+                </div>
+                <div class="option">
+                    <input type="checkbox" id="softClipToggle" name="softClip" checked>
+                    <label for="softClipToggle">Soft Clip</label>
+                </div>
+            </div>
+        </div>
+
         <div id="inputStatsSection" class="card" style="display: none;">
             <div class="section-header">Input</div>
             <div id="inputStats"></div>
-            <audio id="audioPlayer" controls style="width: 100%; margin-top: 1rem;"></audio>
+            <audio id="inputAudioPlayer" controls style="width: 100%; margin-top: 1rem;"></audio>
         </div>
         <div id="executionSection" class="card" style="display: none;">
             <div class="section-header">Execution</div>
@@ -44,27 +67,9 @@
                     <path d="M12 15.586l-4.293-4.293-1.414 1.414L12 18.414l5.707-5.707-1.414-1.414L12 15.586zM12 4a1 1 0 00-1 1v9.586l-2.293-2.293-1.414 1.414L12 18.414l4.707-4.707-1.414-1.414L13 14.586V5a1 1 0 00-1-1z"/>
                 </svg>
             </div>
-            <div id="waveform-container">
-                <video id="videoPlayer" controls style="width: 100%; border-radius: 8px;"></video>
-            </div>
+            <audio id="outputAudioPlayer" controls style="width: 100%; border-radius: 8px;"></audio>
             <div id="download-button-container">
-                <button id="downloadButton">Download MP4</button>
-            </div>
-        </div>
-        <div id="measurementsSection" class="card" style="display: none;">
-            <div class="section-header">Measurements</div>
-            <div class="output-header">
-                <div id="measurementsInfo" class="output-info"></div>
-                <svg id="downloadMeasurementsIcon" class="download-icon" xmlns="http://www.w3.org/2000/svg"
-                     viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 15.586l-4.293-4.293-1.414 1.414L12 18.414l5.707-5.707-1.414-1.414L12 15.586zM12 4a1 1 0 00-1 1v9.586l-2.293-2.293-1.414 1.414L12 18.414l4.707-4.707-1.414-1.414L13 14.586V5a1 1 0 00-1-1z"/>
-                </svg>
-            </div>
-            <div class="code-block-container">
-                <div id="measurementsData" class="code-block"></div>
-            </div>
-            <div id="download-measurements-button-container" class="download-button-container">
-                <button id="downloadMeasurementsButton">Download Measurements</button>
+                <button id="downloadButton">Download MP3</button>
             </div>
         </div>
     </div>
@@ -77,6 +82,10 @@
             <div class="code-block-container">
                 <h3>FFmpeg Version</h3>
                 <div id="ffmpegVersionIndicator" class="code-block">Loading...</div>
+            </div>
+            <div class="code-block-container">
+                <h3>Available Filters</h3>
+                <div id="ffmpegFilters" class="code-block">Loading...</div>
             </div>
             <div class="code-block-container">
                 <h3>Multi-threading Diagnostics</h3>

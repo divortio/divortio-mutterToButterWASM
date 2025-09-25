@@ -158,7 +158,7 @@ FILTER1_HP_NF_DEESER="highpass=f=${HIGH_PASS_FREQ_HZ}, afftdn=nf=$NOISE_FLOOR_DB
 # Filter 1: High Pass, Noise Floor, Deesser, Loudness Analysis
 
 # Generate Filter 1
-FILTER1_LOUDNESS="${FILTER1_HP_NF_DEESER}, " \
+FILTER1_LOUDNESS="${FILTER1_HP_NF_DEESER}," \
 	"loudnorm=I=${TARGET_LOUDNESS_LUFS}:" \
 	"TP=${TARGET_TRUE_PEAK_DBFS}:" \
 	"LRA=${TARGET_LOUDNESS_RANGE_LU}:"

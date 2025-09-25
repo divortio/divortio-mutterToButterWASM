@@ -227,7 +227,7 @@ MP3_GENRE="RECORDING"
 MP3_COMMENT="MD5: ${IN_FILE_MD5}"
 
 PASS_ARGS_MP3=""
-PASS_ARGS_MP3+="--mp3-comment \"${MP3_COMMENT}\" --mp3-genre \"${MP3_GENRE}\" --mp3-album-artist \"${MP3_ALBUM_ARTIST}\" ---mp3-date \"${MP3_DATE}\" --mp3-title \"${MP3_TITLE}\" --mp3-artist \"${MP3_ARTIST}\" --mp3-album \"${MP3_ALBUM}\""
+PASS_ARGS_MP3+="--mp3-comment \"${MP3_COMMENT}\" --mp3-genre \"${MP3_GENRE}\" --mp3-album-artist \"${MP3_ALBUM_ARTIST}\" --mp3-date \"${MP3_DATE}\" --mp3-title \"${MP3_TITLE}\" --mp3-artist \"${MP3_ARTIST}\" --mp3-album \"${MP3_ALBUM}\""
 
 PASS_ARGS+=" ${SCRIPT_ARGS}"
 PASS_ARGS+=" --output-bitrate '${OUTPUT_BIT_RATE}'"

@@ -51,8 +51,8 @@ export async function initialize(progressCallback) {
     // Forcing the single-threaded (ST) version of FFmpeg is the correct solution.
     // It prevents race conditions and memory issues that occur in the multi-threaded (MT)
     // version when running a complex application, ensuring stability.
-    const isMt = false;
-    // const isMt = window.crossOriginIsolated; // Original problematic line
+    // const isMt = false;
+    const isMt = window.crossOriginIsolated; // Original problematic line
     // ------------------------------------
 
     const coreBaseURL = isMt ? baseURLCoreMT : baseURLCore;

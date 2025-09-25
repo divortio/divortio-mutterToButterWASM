@@ -1,101 +1,109 @@
 /**
- * @file Pipeline Step 3: Processes each audio chunk into an animated video segment.
+ * @file Pipeline Step 3: Processes each audio chunk through a multi-pass mastering chain.
  */
 
 import {runFFmpeg} from '../ffmpeg-run.js';
+import {parseLoudness, parseRmsLevel} from './log-parser.js';
 import {
-    CHUNK_DURATION, WIDTH, HEIGHT, HALF_HEIGHT, NUM_BARS, NUM_BINS, BAR_WIDTH,
-    GAP_WIDTH, MAX_HEIGHT_SCALE, FPS, WAVE_COLOR_UNPLAYED, WAVE_COLOR_PLAYED,
-    BG_COLOR, X_OFFSET
+    TARGET_LOUDNESS_LUFS,
+    TARGET_TRUE_PEAK_DBFS,
+    TARGET_LOUDNESS_RANGE_LU,
+    HIGH_PASS_FREQ_HZ,
+    NOISE_FLOOR_DBFS,
+    OUTPUT_FORMAT,
+    OUTPUT_QUALITY
 } from '../constants.js';
 
 /**
- * Processes all audio chunks into individual video segments.
- * @param {object} ffmpeg - The initialized FFmpeg instance.
- * @param {string[]} chunkFiles - An array of chunk filenames.
- * @param {object} updateUI - The UI update callback function.
- * @param {object} onProgress - The real-time progress callback for the sub-progress bar.
- * @param {object} logStore - The log store for capturing FFmpeg logs.
- * @returns {Promise<{segmentFiles: string[], allPeakLevels: number[]}>} An object containing the list of created segment filenames and all collected peak levels.
+ * @typedef {object} MasteringOptions
+ * @property {boolean} gate - Whether to enable the dynamic noise gate.
+ * @property {boolean} clarity - Whether to enable the high-frequency clarity boost.
+ * @property {boolean} tonal - Whether to enable the tonal balance EQ.
+ * @property {boolean} softClip - Whether to enable the soft clipper.
  */
-export async function processChunks(ffmpeg, chunkFiles, updateUI, onProgress, logStore) {
-    const segmentFiles = [];
-    const allPeakLevels = [];
 
-    // Attach the real-time progress handler for this step
-    ffmpeg.on('progress', ({ratio}) => {
-        if (onProgress) onProgress(ratio);
-    });
+/**
+ * Processes all audio chunks through a four-pass audio mastering workflow.
+ */
+export async function processChunks(ffmpeg, chunkFiles, channelLayout, options, updateUI, logStore) {
+    const processedFiles = [];
 
     for (let i = 0; i < chunkFiles.length; i++) {
         const chunkFile = chunkFiles[i];
-        const segmentFile = `video_${String(i).padStart(4, '0')}.mp4`;
-        segmentFiles.push(segmentFile);
+        const chunkBasename = chunkFile.split('.')[0];
+        const tempNormalizedFile = `${chunkBasename}_norm.wav`;
+        const finalOutputFile = `${chunkBasename}_mastered.${OUTPUT_FORMAT}`;
+        const rmsLogFile = 'rms_pass.txt';
 
         updateUI({
-            progressMessage: `Step 3: Processing Segment (${i + 1}/${chunkFiles.length})`,
-            progressStep: {current: 2, total: 5} // Keep main progress on Step 3
+            progressMessage: `Step 3: Processing Chunk (${i + 1}/${chunkFiles.length})`,
         });
 
-        // 1. Analyze the chunk for peak levels
+        // --- PASS 1: Loudness Analysis ---
+        updateUI({subProgressMessage: `Pass 1/4: Analyzing Loudness...`});
         logStore.clear();
-        const sliceDuration = CHUNK_DURATION / NUM_BARS;
-
-        // --- THIS IS THE FIX ---
-        // Switched to the more robust `amovie` filter for analysis, which correctly
-        // slices the audio and provides the necessary 100 data points for the 100 bars.
-        // The output to 'null' and '-' is stable with the multi-threaded core.
-        const analysisArgs = [
-            '-f', 'lavfi',
-            '-i', `amovie=${chunkFile},astats=metadata=1:length=${sliceDuration},ametadata=mode=print:key=lavfi.astats.Overall.Peak_level`,
-            '-f', 'null',
-            '-'
-        ];
+        const initialFilters = `aformat=channel_layouts=${channelLayout},highpass=f=${HIGH_PASS_FREQ_HZ},afftdn=nf=${NOISE_FLOOR_DBFS},deesser`;
+        const loudnessAnalysisFilter = `${initialFilters},loudnorm=I=${TARGET_LOUDNESS_LUFS}:TP=${TARGET_TRUE_PEAK_DBFS}:LRA=${TARGET_LOUDNESS_RANGE_LU}:print_format=json`;
+        const analysisArgs = ['-i', chunkFile, '-af', loudnessAnalysisFilter, '-f', 'null', '-'];
         await runFFmpeg(ffmpeg, analysisArgs, updateUI, logStore);
-        // -----------------------
+        const loudnessData = parseLoudness(logStore.get());
 
-        const peakLevels = logStore.get().split('\n')
-            .filter(line => line.includes('lavfi.astats.Overall.Peak_level='))
-            .map(line => parseFloat(line.split('=')[1]));
+        // --- PASS 2: Loudness Normalization ---
+        updateUI({subProgressMessage: `Pass 2/4: Applying Loudness Correction...`});
+        const loudnessCorrectionFilter = `${initialFilters},loudnorm=I=${TARGET_LOUDNESS_LUFS}:TP=${TARGET_TRUE_PEAK_DBFS}:LRA=${TARGET_LOUDNESS_RANGE_LU}:measured_I=${loudnessData.measured_I}:measured_TP=${loudnessData.measured_TP}:measured_LRA=${loudnessData.measured_LRA}:measured_thresh=${loudnessData.measured_thresh}:offset=${loudnessData.target_offset}`;
+        const normalizeArgs = ['-i', chunkFile, '-af', loudnessCorrectionFilter, tempNormalizedFile];
+        await runFFmpeg(ffmpeg, normalizeArgs, updateUI, logStore);
 
-        allPeakLevels.push(...peakLevels);
+        // --- PASS 3: Mastering Analysis (RMS) ---
+        updateUI({subProgressMessage: `Pass 3/4: Analyzing for Mastering...`});
+        const rmsAnalysisFilter = `astats=metadata=1,ametadata=mode=print:file=${rmsLogFile}`;
+        const rmsArgs = ['-i', tempNormalizedFile, '-af', rmsAnalysisFilter, '-f', 'null', '-'];
+        await runFFmpeg(ffmpeg, rmsArgs, updateUI, logStore);
+        const rmsFileContent = new TextDecoder().decode(await ffmpeg.readFile(rmsLogFile));
+        const rmsLevel = parseRmsLevel(rmsFileContent);
+        await ffmpeg.deleteFile(rmsLogFile);
 
-        // 2. Render the video segment
-        let renderArgs;
-        if (peakLevels.length === 0) {
-            renderArgs = ['-f', 'lavfi', '-i', `color=c=${BG_COLOR}:s=${WIDTH}x${HEIGHT}:d=${CHUNK_DURATION}:r=${FPS}`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an', segmentFile];
-        } else {
-            let playedCmds = '', unplayedCmds = '';
-            peakLevels.forEach((peakDb, barIndex) => {
-                let level = 1;
-                if (isFinite(peakDb)) {
-                    if (peakDb > -6) level = 8; else if (peakDb > -12) level = 7;
-                    else if (peakDb > -18) level = 6; else if (peakDb > -24) level = 5;
-                    else if (peakDb > -30) level = 4; else if (peakDb > -36) level = 3;
-                    else if (peakDb > -42) level = 2;
-                }
-                let barHeight = Math.max(1, Math.floor(((level * HALF_HEIGHT) / NUM_BINS) * MAX_HEIGHT_SCALE));
-                const xPos = X_OFFSET + (barIndex * (BAR_WIDTH + GAP_WIDTH));
-                const yPos = HALF_HEIGHT - barHeight;
-                playedCmds += `drawbox=x=${xPos}:y=${yPos}:w=${BAR_WIDTH}:h=${barHeight}:c=${WAVE_COLOR_PLAYED}@1.0:t=fill,`;
-                unplayedCmds += `drawbox=x=${xPos}:y=${yPos}:w=${BAR_WIDTH}:h=${barHeight}:c=${WAVE_COLOR_UNPLAYED}@1.0:t=fill,`;
-            });
-
-            const filterComplex = `[0:v] ${unplayedCmds.slice(0, -1)} [unplayed_wave]; [1:v] ${playedCmds.slice(0, -1)} [played_wave]; color=c=black:s=${WIDTH}x${HALF_HEIGHT}:d=${CHUNK_DURATION}:r=${FPS} [mask_base]; color=c=white:s=${WIDTH}x${HALF_HEIGHT}:d=${CHUNK_DURATION}:r=${FPS} [mask_color]; [mask_base][mask_color] overlay=x='-w+(w/${CHUNK_DURATION})*t' [animated_mask]; [played_wave][animated_mask] alphamerge [played_animated]; [unplayed_wave][played_animated] overlay [animated_top_half]; [animated_top_half] split [top][bottom]; [bottom] vflip [bottom_flipped]; [top][bottom_flipped] vstack [mirrored_waves]; color=c=${BG_COLOR}:s=${WIDTH}x${HEIGHT}:d=${CHUNK_DURATION}:r=${FPS} [bg]; [bg][mirrored_waves] overlay=(W-w)/2:(H-h)/2 [final_video]`;
-
-            renderArgs = [
-                '-f', 'lavfi', '-i', `color=c=black@0.0:s=${WIDTH}x${HALF_HEIGHT}:d=${CHUNK_DURATION}:r=${FPS}`,
-                '-f', 'lavfi', '-i', `color=c=black@0.0:s=${WIDTH}x${HALF_HEIGHT}:d=${CHUNK_DURATION}:r=${FPS}`,
-                '-filter_complex', filterComplex,
-                '-map', '[final_video]', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p', '-an', segmentFile
-            ];
+        if (isNaN(rmsLevel)) {
+            throw new Error(`Failed to parse a valid RMS level for chunk ${chunkFile}.`);
         }
 
-        await runFFmpeg(ffmpeg, renderArgs, updateUI, logStore);
+        // --- PASS 4: Final Mastering and Encoding ---
+        updateUI({subProgressMessage: `Pass 4/4: Applying Final Mastering...`});
+        const masteringFilters = [];
+        const demudThreshold = rmsLevel + 3;
+
+        // BUG FIX: Using correct FFmpeg 5.1.4 syntax for adynamicequalizer
+        // adynamiceq=dfrequency=350:dqfactor=1.75:tfrequency=350:tqfactor=1.75:tftype=bell:threshold=22:attack=20:release=50:knee=1:ratio=1:makeup=2:range=2:slew=1:mode=boost
+        masteringFilters.push(`adynamicequalizer=dfrequency=350:dqfactor=1.75:tfrequency=350:tqfactor=1.75:tftype=bell:threshold=${demudThreshold}:attack=20:release=50:knee=1:ratio=1:makeup=2:range=2:slew=1:mode=boost`)
+
+        masteringFilters.push(`adynamicequalizer=dfrequency=7000:dqfactor=3.5:tfrequency=7000:tqfactor=3.5:tftype=bell:threshold=22:attack=20:release=50:knee=1:ratio=1:makeup=3:range=3:slew=1:mode=boost`);
+
+        masteringFilters.push(`alimiter=limit=0.9`);
+
+        if (options.gate) {
+            const gateThresholdDb = rmsLevel - 18;
+            const gateThresholdLinear = Math.pow(10, gateThresholdDb / 20);
+            masteringFilters.push(`agate=threshold=${gateThresholdLinear}`);
+        }
+        if (options.clarity) {
+            masteringFilters.push("equalizer=f=8000:t=h:g=3");
+        }
+        if (options.tonal) {
+            masteringFilters.push("equalizer=f=92:width_type=h:w=50:g=1");
+            masteringFilters.push("equalizer=f=185:width_type=h:w=100:g=1");
+            masteringFilters.push("equalizer=f=5920:width_type=h:w=1000:g=1.5");
+        }
+        if (options.softClip) {
+            masteringFilters.push("asoftclip=type=atan");
+        }
+
+        const finalFilterString = masteringFilters.join(',');
+        const finalArgs = ['-i', tempNormalizedFile, '-af', finalFilterString, ...OUTPUT_QUALITY.split(' '), finalOutputFile];
+        await runFFmpeg(ffmpeg, finalArgs, updateUI, logStore);
+
+        await ffmpeg.deleteFile(tempNormalizedFile);
+        processedFiles.push(finalOutputFile);
     }
 
-    // Detach the progress handler now that this step is complete
-    ffmpeg.off('progress');
-
-    return {segmentFiles, allPeakLevels};
+    return {processedFiles};
 }

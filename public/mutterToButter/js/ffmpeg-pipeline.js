@@ -1,6 +1,5 @@
 /**
- * @file This is the main orchestrator for the video generation pipeline.
- * It imports and executes each step in sequence.
+ * @file This is the main orchestrator for the MutterToButter audio mastering pipeline.
  */
 
 import {sanitize} from './pipeline/step0-sanitize.js';
@@ -8,14 +7,24 @@ import {analyze} from './pipeline/step1-analyze.js';
 import {chunk} from './pipeline/step2-chunk.js';
 import {processChunks} from './pipeline/step3-process-chunks.js';
 import {concatenate} from './pipeline/step4-concatenate.js';
-import {mux} from './pipeline/step5-mux.js';
 
-export async function generateWaveformVideo(ffmpeg, file, updateUI, onProgress) {
+/**
+ * @typedef {import('./pipeline/step3-process-chunks.js').MasteringOptions} MasteringOptions
+ */
+
+/**
+ * Executes the full audio mastering pipeline.
+ *
+ * @param {object} ffmpeg - The initialized FFmpeg instance.
+ * @param {File} file - The user-uploaded audio file.
+ * @param {MasteringOptions} options - User-selected mastering options from the UI.
+ * @param {function} updateUI - The UI update callback function.
+ * @returns {Promise<{audioBlob: Blob, audioDuration: number, executionTime: number, error?: Error}>} The result of the pipeline execution.
+ */
+export async function runMasteringPipeline(ffmpeg, file, options, updateUI) {
     const overallStartTime = performance.now();
     let audioDuration = 0;
-    const allPeakLevels = [];
-    const cleanupPaths = [file.name];
-    const TOTAL_STEPS = 6; // Updated total steps
+    const cleanupPaths = [];
 
     const logStore = {
         logs: '',
@@ -32,125 +41,73 @@ export async function generateWaveformVideo(ffmpeg, file, updateUI, onProgress) 
     };
 
     const cleanup = async () => {
-        if (!ffmpeg) return;
-        try {
-            await ffmpeg.unmount('/input');
-        } catch (e) {
-        }
-        try {
-            await ffmpeg.deleteDir('/input');
-        } catch (e) {
-        }
-
         for (const path of cleanupPaths) {
             try {
                 await ffmpeg.deleteFile(path);
-            } catch (e) {
+            } catch (e) { /* ignore */
             }
         }
     };
 
     try {
-        await ffmpeg.createDir('/input');
-        await ffmpeg.mount('WORKERFS', {files: [file]}, '/input');
+        await ffmpeg.writeFile(file.name, new Uint8Array(await file.arrayBuffer()));
+        cleanupPaths.push(file.name);
 
         ffmpeg.on('log', ({message}) => logStore.append(message));
 
-        const originalInputFile = `/input/${file.name}`;
-
-        // --- Step 0: Sanitize ---
-        let stepStartTime = performance.now();
-        updateUI({progressMessage: 'Step 1: Sanitizing Audio', progressStep: {current: 0, total: TOTAL_STEPS}});
-        const sanitizedAudioFile = await sanitize(ffmpeg, originalInputFile, updateUI, logStore);
+        // Step 0: Sanitize
+        updateUI({progressMessage: 'Step 1/5: Sanitizing Audio...', progressStep: {current: 1, total: 5}});
+        const sanitizedAudioFile = await sanitize(ffmpeg, file.name, updateUI, logStore);
         cleanupPaths.push(sanitizedAudioFile);
-        updateUI({
-            progressMessage: 'Step 1: Sanitization Complete',
-            progressStep: {current: 1, total: TOTAL_STEPS},
-            stepTime: performance.now() - stepStartTime
-        });
 
-        // --- Step 1: Analyze ---
-        stepStartTime = performance.now();
-        updateUI({progressMessage: 'Step 2: Analyzing Audio', progressStep: {current: 1, total: TOTAL_STEPS}});
-        audioDuration = await analyze(ffmpeg, sanitizedAudioFile, updateUI, logStore);
+        // Step 1: Analyze
+        updateUI({progressMessage: 'Step 2/5: Analyzing Audio...', progressStep: {current: 2, total: 5}});
+        const {duration, channelLayout} = await analyze(ffmpeg, sanitizedAudioFile, updateUI, logStore);
+        audioDuration = duration;
         updateUI({type: 'duration', duration: audioDuration});
-        updateUI({
-            progressMessage: 'Step 2: Analysis Complete',
-            progressStep: {current: 2, total: TOTAL_STEPS},
-            stepTime: performance.now() - stepStartTime
-        });
 
-        // --- Step 2: Chunk ---
-        stepStartTime = performance.now();
-        updateUI({progressMessage: 'Step 3: Chunking Audio', progressStep: {current: 2, total: TOTAL_STEPS}});
+        // Step 2: Chunk
+        updateUI({progressMessage: 'Step 3/5: Chunking Audio...', progressStep: {current: 3, total: 5}});
         const chunkFiles = await chunk(ffmpeg, sanitizedAudioFile, updateUI, logStore);
         cleanupPaths.push(...chunkFiles);
-        updateUI({
-            progressMessage: 'Step 3: Chunking Complete',
-            progressStep: {current: 3, total: TOTAL_STEPS},
-            stepTime: performance.now() - stepStartTime
-        });
 
-        // --- Step 3: Process Chunks ---
-        stepStartTime = performance.now();
-        const {
-            segmentFiles,
-            allPeakLevels: peaks
-        } = await processChunks(ffmpeg, chunkFiles, updateUI, onProgress, logStore);
-        allPeakLevels.push(...peaks);
-        cleanupPaths.push(...segmentFiles);
-        updateUI({
-            progressMessage: 'Step 4: Processing Complete',
-            progressStep: {current: 4, total: TOTAL_STEPS},
-            stepTime: performance.now() - stepStartTime
-        });
+        // Step 3: Process Chunks
+        updateUI({progressMessage: 'Step 4/5: Mastering Chunks...', progressStep: {current: 4, total: 5}});
 
-        // --- Step 4: Concatenate ---
-        stepStartTime = performance.now();
-        updateUI({progressMessage: 'Step 5: Concatenating', progressStep: {current: 4, total: TOTAL_STEPS}});
-        const silentVideoFile = await concatenate(ffmpeg, segmentFiles, updateUI, logStore);
-        cleanupPaths.push(silentVideoFile, 'concat_list.txt');
-        updateUI({
-            progressMessage: 'Step 5: Concatenation Complete',
-            progressStep: {current: 5, total: TOTAL_STEPS},
-            stepTime: performance.now() - stepStartTime
-        });
+        // --- BUG FIX: The arguments passed to processChunks were in the wrong order. ---
+        // The `updateUI` function must be passed before `logStore`.
+        const {processedFiles} = await processChunks(ffmpeg, chunkFiles, channelLayout, options, updateUI, logStore);
+        // --- END BUG FIX ---
 
-        // --- Step 5: Mux Audio ---
-        stepStartTime = performance.now();
-        updateUI({progressMessage: 'Step 6: Muxing Audio', progressStep: {current: 5, total: TOTAL_STEPS}});
-        const finalVideoFile = await mux(ffmpeg, silentVideoFile, sanitizedAudioFile, updateUI, logStore);
-        cleanupPaths.push(finalVideoFile);
-        updateUI({
-            progressMessage: 'Step 6: Muxing Complete',
-            progressStep: {current: 6, total: TOTAL_STEPS},
-            stepTime: performance.now() - stepStartTime
-        });
+        cleanupPaths.push(...processedFiles);
 
-        // --- Finalization ---
+        // Step 4: Concatenate & Tag
+        updateUI({progressMessage: 'Step 5/5: Assembling Final File...', progressStep: {current: 5, total: 5}});
+        const metadata = {
+            title: `${file.name} (Mastered)`,
+            artist: 'MutterToButter WASM',
+            album: new Date().toLocaleDateString(),
+            date: new Date().getFullYear().toString(),
+            comment: `Processed with MutterToButter WASM.`
+        };
+        const finalAudioFile = await concatenate(ffmpeg, processedFiles, metadata, updateUI, logStore);
+        cleanupPaths.push(finalAudioFile, 'concat_list.txt');
+
+        // Finalization
         ffmpeg.off('log');
-        const data = await ffmpeg.readFile(finalVideoFile);
-        const videoBlob = new Blob([data.buffer], {type: 'video/mp4'});
-
-        const measurements = {sourceFile: file.name, generatedAt: new Date().toISOString(), peakLevels: allPeakLevels};
-        const measurementsString = JSON.stringify(measurements, null, 2);
-        const measurementsBlob = new Blob([measurementsString], {type: 'application/json'});
+        const data = await ffmpeg.readFile(finalAudioFile);
+        const audioBlob = new Blob([data.buffer], {type: 'audio/mpeg'});
 
         await cleanup();
         return {
-            videoBlob,
-            measurementsBlob,
-            measurementsString,
+            audioBlob,
             audioDuration,
             executionTime: performance.now() - overallStartTime
         };
 
     } catch (error) {
         console.error("Caught error during pipeline execution:", error);
-        if (ffmpeg) {
-            ffmpeg.off('log');
-            ffmpeg.off('progress');
-        }
+        ffmpeg.off('log');
         await cleanup();
         return {error, executionTime: performance.now() - overallStartTime};
     }

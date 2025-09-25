@@ -4,19 +4,17 @@ export class UI {
     constructor() {
         this.dom = {};
         const ids = [
-            'uploadArea', 'uploadAreaText', 'fileInput', 'inputStatsSection', 'inputStats', 'audioPlayer',
+            'uploadArea', 'uploadAreaText', 'fileInput', 'inputStatsSection', 'inputStats', 'inputAudioPlayer',
             'executionSection', 'executionIndicator', 'progressBarInner', 'progressText',
             'finalExecutionStats', 'executionTimer', 'outputSection', 'outputInfo',
-            'downloadIcon', 'videoPlayer', 'downloadButton', 'measurementsSection',
-            'measurementsInfo', 'measurementsData', 'downloadMeasurementsIcon',
-            'downloadMeasurementsButton', 'consoleHeader', 'diagnosticsSection',
+            'downloadIcon', 'outputAudioPlayer', 'downloadButton', 'consoleHeader', 'diagnosticsSection',
             'ffmpegVersionIndicator', 'mtDiagnostics', 'ffmpegCommand', 'errorContainer',
             'errorBlock', 'ffmpegLogs', 'copyCommandBtn', 'copyLogsBtn', 'copyErrorBtn',
-            'subProgressBar', 'subProgressBarInner', 'stepTimings'
+            'masteringOptionsSection', 'gateToggle', 'clarityToggle', 'tonalToggle', 'softClipToggle',
+            'subProgressBar', 'subProgressBarInner', 'stepTimings', 'ffmpegFilters'
         ];
         ids.forEach(id => this.dom[id] = document.getElementById(id));
-        this.videoBlob = null;
-        this.measurementsBlob = null;
+        this.audioBlob = null;
         this.inputFilenameBase = '';
     }
 
@@ -34,15 +32,13 @@ export class UI {
             if (!blob) return;
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = `${this.inputFilenameBase}_waveform.${extension}`;
+            a.download = `${this.inputFilenameBase}_mastered.${extension}`;
             a.click();
             URL.revokeObjectURL(a.href);
         };
 
-        this.dom.downloadButton.addEventListener('click', () => downloadAction(this.videoBlob, 'mp4'));
-        this.dom.downloadIcon.addEventListener('click', () => downloadAction(this.videoBlob, 'mp4'));
-        this.dom.downloadMeasurementsButton.addEventListener('click', () => downloadAction(this.measurementsBlob, 'json'));
-        this.dom.downloadMeasurementsIcon.addEventListener('click', () => downloadAction(this.measurementsBlob, 'json'));
+        this.dom.downloadButton.addEventListener('click', () => downloadAction(this.audioBlob, 'mp3'));
+        this.dom.downloadIcon.addEventListener('click', () => downloadAction(this.audioBlob, 'mp3'));
 
         const addCopyListener = (button, source) => {
             button.addEventListener('click', () => {
@@ -64,7 +60,7 @@ export class UI {
         this.dom.uploadArea.style.display = 'block';
         this.dom.uploadAreaText.textContent = 'Click to upload an audio file';
         this.dom.uploadArea.style.cursor = 'pointer';
-        ['inputStatsSection', 'executionSection', 'outputSection', 'measurementsSection', 'errorContainer'].forEach(id => this.dom[id].style.display = 'none');
+        ['inputStatsSection', 'executionSection', 'outputSection', 'masteringOptionsSection', 'errorContainer'].forEach(id => this.dom[id].style.display = 'none');
     }
 
     displayLoadingState(initialMessage = 'Loading FFmpeg Core...') {
@@ -76,11 +72,17 @@ export class UI {
         this.displayLoadingState(`Loading FFmpeg Core (${(percentage * 100).toFixed(0)}%)...`);
     }
 
+    updateFilterList(filterText) {
+        if (this.dom.ffmpegFilters) {
+            this.dom.ffmpegFilters.textContent = filterText;
+        }
+    }
+
     displayProcessingState(file) {
         this.inputFilenameBase = file.name.split('.').slice(0, -1).join('.');
-        this.dom.audioPlayer.src = URL.createObjectURL(file);
-        ['uploadArea', 'outputSection', 'measurementsSection', 'errorContainer'].forEach(id => this.dom[id].style.display = 'none');
-        ['inputStatsSection', 'executionSection'].forEach(id => this.dom[id].style.display = 'block');
+        this.dom.inputAudioPlayer.src = URL.createObjectURL(file);
+        ['uploadArea', 'outputSection', 'errorContainer'].forEach(id => this.dom[id].style.display = 'none');
+        ['inputStatsSection', 'executionSection', 'masteringOptionsSection'].forEach(id => this.dom[id].style.display = 'block');
         this.dom.inputStats.innerHTML = `<div class="file-line">File: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)</div><div class="duration-line">Duration: Analyzing...</div>`;
         this.dom.finalExecutionStats.textContent = '';
         this.dom.ffmpegLogs.textContent = '';
@@ -94,18 +96,25 @@ export class UI {
         startTimer(this.dom.executionTimer);
     }
 
-    updateSubProgress(ratio) {
-        this.dom.subProgressBar.style.display = 'block';
-        this.dom.subProgressBarInner.style.width = `${ratio * 100}%`;
+    getMasteringOptions() {
+        return {
+            gate: this.dom.gateToggle.checked,
+            clarity: this.dom.clarityToggle.checked,
+            tonal: this.dom.tonalToggle.checked,
+            softClip: this.dom.softClipToggle.checked,
+        };
     }
 
     updateDuration(duration) {
         this.dom.inputStats.querySelector('.duration-line').textContent = `Duration: ${formatDurationTimestamp(duration)} (${formatDurationVerbose(duration)})`;
     }
 
-    update({command, logs, progressStep, progressMessage, stepTime, version}) {
+    update({command, logs, progressStep, progressMessage, subProgressMessage, stepTime, version}) {
         if (command) this.dom.ffmpegCommand.textContent = command;
         if (logs) this.dom.ffmpegLogs.textContent += logs;
+
+        if (version) this.dom.ffmpegVersionIndicator.innerHTML = version;
+
         if (progressStep) {
             const percentage = Math.round((progressStep.current / progressStep.total) * 100);
             this.dom.progressBarInner.style.width = `${percentage}%`;
@@ -115,22 +124,21 @@ export class UI {
                 const timeInfo = `(${(stepTime / 1000).toFixed(2)}s)`;
                 this.dom.stepTimings.innerHTML += `<div>${progressMessage}: ${timeInfo}</div>`;
             }
-
             this.dom.progressText.textContent = progressMessage;
-
-            this.dom.subProgressBar.style.display = 'none';
-            this.dom.subProgressBarInner.style.width = '0%';
         }
-        if (version) this.dom.ffmpegVersionIndicator.innerHTML = version;
+
+        if (subProgressMessage) {
+            this.dom.progressText.textContent = subProgressMessage;
+        }
     }
 
-    handleResult({videoBlob, measurementsBlob, measurementsString, audioDuration, executionTime, error}) {
+    handleResult({audioBlob, audioDuration, executionTime, error}) {
         stopTimer();
         this.dom.subProgressBar.style.display = 'none';
 
         if (error) {
             this.dom.errorContainer.style.display = 'block';
-            this.dom.errorBlock.textContent = error.message; // This will now have the full error
+            this.dom.errorBlock.textContent = error.message;
             this.dom.executionIndicator.className = 'error';
             this.dom.progressText.textContent = `Failed: ${error.message.split('\n')[0]}`;
             this.dom.finalExecutionStats.textContent = `Aborted after ${(executionTime / 1000).toFixed(2)}s`;
@@ -138,16 +146,15 @@ export class UI {
         }
 
         this.dom.outputSection.style.display = 'block';
-        this.videoBlob = videoBlob;
-        this.measurementsBlob = measurementsBlob;
+        this.audioBlob = audioBlob;
 
-        if (this.dom.videoPlayer.src) {
-            URL.revokeObjectURL(this.dom.videoPlayer.src);
+        if (this.dom.outputAudioPlayer.src) {
+            URL.revokeObjectURL(this.dom.outputAudioPlayer.src);
         }
-        this.dom.videoPlayer.src = URL.createObjectURL(this.videoBlob);
+        this.dom.outputAudioPlayer.src = URL.createObjectURL(this.audioBlob);
 
         this.updateDuration(audioDuration);
-        this.dom.outputInfo.textContent = `${this.inputFilenameBase}_waveform.mp4 (${(this.videoBlob.size / 1024 / 1024).toFixed(2)} MB)`;
+        this.dom.outputInfo.textContent = `${this.inputFilenameBase}_mastered.mp3 (${(this.audioBlob.size / 1024 / 1024).toFixed(2)} MB)`;
 
         const speed = executionTime > 0 ? `${(audioDuration / (executionTime / 1000)).toFixed(2)}x` : 'N/A';
         this.dom.finalExecutionStats.textContent = `Completed | Speed: ${speed}`;

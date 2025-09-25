@@ -1,7 +1,8 @@
 import {UI} from './ui.js';
-import * as Pipeline from './ffmpeg-pipeline.js';
+import {runMasteringPipeline} from './ffmpeg-pipeline.js';
 import {initialize as initializeFFmpeg} from './ffmpeg-loader.js';
 import {runDiagnostics} from './diagnostics.js';
+import {runFFmpeg} from './ffmpeg-run.js'; // Import the helper
 
 class App {
     constructor() {
@@ -15,23 +16,70 @@ class App {
         runDiagnostics();
 
         try {
-            const onLoadingProgress = (ratio) => this.ui.updateLoadingProgress(ratio);
-            this.ffmpeg = await initializeFFmpeg(onLoadingProgress);
-
-            // --- THIS IS THE FIX for the UI bug ---
-            // The code to display the version was missing. This adds it back.
-            const versionInfo = `<strong>Version:</strong> ${this.ffmpeg.version}<br><strong>Mode:</strong> ${window.crossOriginIsolated ? 'Multi-Threaded' : 'Single-Threaded'}`;
-            this.ui.update({version: versionInfo});
-            // ------------------------------------------
-
+            this.ffmpeg = await initializeFFmpeg((ratio) => this.ui.updateLoadingProgress(ratio));
             this.isReady = true;
+
+            const logStore = {
+                logs: '',
+                append: function (message) {
+                    this.logs += message + '\n';
+                },
+                get: function () {
+                    return this.logs;
+                },
+                clear: function () {
+                    this.logs = '';
+                }
+            };
+
+            // This is the user-provided, correct fix.
+            // The global log listener must be attached here to capture all subsequent command outputs.
+            this.ffmpeg.on('log', ({message}) => logStore.append(message));
+
+            // --- Get and Display FFmpeg Version ---
+            logStore.clear();
+            const versionArgs = ['-version'];
+            try {
+                await runFFmpeg(this.ffmpeg, versionArgs, null, logStore);
+            } catch (e) {
+                // This is expected as info commands can exit with an error.
+            }
+            const versionLog = logStore.get();
+            this.ui.update({version: versionLog});
+
+            // --- Get and Display Available Filters ---
+            // logStore.clear();
+            // ffmpeg --help filter=adynamicequalizer
+            // const filterDQ = ['--help', 'filter=adynamicequalizer'];
+            // try {
+            //     await runFFmpeg(this.ffmpeg, filterDQ, null, logStore);
+            // } catch (e) {
+            //     // This is also expected.
+            // }
+            // const filterDQAnsser = logStore.get();
+            // console.log(filterDQAnsser)
+
+            // --- Get and Display Available Filters ---
+            logStore.clear();
+            const filterArgs = ['-filters'];
+            try {
+                await runFFmpeg(this.ffmpeg, filterArgs, null, logStore);
+            } catch (e) {
+                // This is also expected.
+            }
+            const filterLog = logStore.get();
+            this.ui.updateFilterList(filterLog);
+
             this.ui.initializeEventListeners((file) => this.handleFileSelection(file));
             this.ui.displayInitialState();
             console.log("Application is ready.");
 
         } catch (error) {
-            console.error("Critical Error: FFmpeg failed to load.", error);
-            this.ui.handleResult({error: new Error(`FFmpeg failed to load: ${error.message}`), executionTime: 0});
+            console.error("Critical Error during initialization.", error);
+            this.ui.handleResult({
+                error: new Error(`FFmpeg failed to load or initialize: ${error.message}`),
+                executionTime: 0
+            });
         }
     }
 
@@ -42,7 +90,8 @@ class App {
         }
         this.ui.displayProcessingState(file);
 
-        const onSubProgress = (ratio) => this.ui.updateSubProgress(ratio);
+        const masteringOptions = this.ui.getMasteringOptions();
+
         const onUpdate = (update) => {
             if (update.type === 'duration') {
                 this.ui.updateDuration(update.duration);
@@ -51,8 +100,7 @@ class App {
             }
         };
 
-        // Pass the initialized ffmpeg instance to the pipeline
-        const result = await Pipeline.generateWaveformVideo(this.ffmpeg, file, onUpdate, onSubProgress);
+        const result = await runMasteringPipeline(this.ffmpeg, file, masteringOptions, onUpdate);
 
         this.ui.handleResult(result);
     }
